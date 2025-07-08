@@ -2,20 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:hive_flutter/hive_flutter.dart'; // 👈 Needed for Hive
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; 
 import 'screens/sign_in_screen.dart';
 import 'screens/mood_tracker_screen.dart';
 import 'screens/user_profile_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await dotenv.load();
+  print("API KEY: ${dotenv.env['GOOGLE_API_KEY']}");
+
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // ✅ Initialize Hive
   await Hive.initFlutter();
-  await Hive.openBox('journalBox'); // 👈 This is essential before accessing it
+  await Hive.openBox('journalBox');
 
   runApp(const MyApp());
 }
@@ -33,7 +39,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: const AuthWrapper(), // Decide screen based on login state
+      home: const AuthWrapper(),
       routes: {
         '/login': (context) => const SignInScreen(),
         '/profile': (context) => const UserProfileScreen(),

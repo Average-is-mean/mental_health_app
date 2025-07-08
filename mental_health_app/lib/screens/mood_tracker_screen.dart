@@ -74,9 +74,7 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
       'Time for your daily mood update.',
       scheduledDate,
       notificationDetails,
-      androidAllowWhileIdle: true,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,        
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
