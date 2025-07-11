@@ -1,3 +1,6 @@
-fastapi==0.115.14
-uvicorn==0.35.0
 pydantic==2.11.7
+fastapi
+uvicorn
+google-generativeai
+python-dotenv
+textblob
