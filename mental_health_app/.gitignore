@@ -85,3 +85,4 @@ web/build/
 
 # Hive DB files (optional - if storing only on device)
 *.lock
+.env

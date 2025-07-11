@@ -52,7 +52,23 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
     final settings = InitializationSettings(android: androidSettings);
     await _notificationPlugin.initialize(settings);
 
-    _scheduleDailyReminder();
+    final androidImplementation =
+        _notificationPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    try {
+      final bool? granted =
+          await androidImplementation?.requestExactAlarmsPermission();
+      if (granted == false) {
+        debugPrint("⚠️ Exact alarm permission not granted. Skipping reminder.");
+        return;
+      }
+    } catch (e) {
+      debugPrint("❌ Failed to request exact alarm permission: $e");
+      return;
+    }
+
+    await _scheduleDailyReminder();
   }
 
   Future<void> _scheduleDailyReminder() async {
@@ -74,9 +90,7 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
       'Time for your daily mood update.',
       scheduledDate,
       notificationDetails,
-      androidAllowWhileIdle: true,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
@@ -88,11 +102,18 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
   }
 
   Future<void> _saveMood() async {
-    if (_selectedMood == null) return;
+    if (_selectedMood == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a mood before saving.")),
+      );
+      return;
+    }
 
     final text = _journalController.text.trim();
     double polarity = 0.0;
     String sentiment = 'neutral';
+    Map<String, dynamic> aiAnalysisMap = {};
+    String aiAnalysisString = '';
 
     if (text.isNotEmpty) {
       try {
@@ -106,9 +127,35 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
           final result = jsonDecode(response.body);
           polarity = (result['polarity'] as num).toDouble();
           sentiment = result['sentiment'];
+
+          final analysisRaw = result['ai_analysis'];
+          debugPrint("🔍 AI raw result: $analysisRaw"); // 🐞 debugging
+
+          if (analysisRaw is Map<String, dynamic>) {
+            aiAnalysisMap = analysisRaw;
+            aiAnalysisString = jsonEncode(analysisRaw);
+          } else if (analysisRaw is String) {
+            try {
+              final parsed = jsonDecode(analysisRaw);
+              if (parsed is Map<String, dynamic>) {
+                aiAnalysisMap = parsed;
+                aiAnalysisString = jsonEncode(parsed);
+              } else {
+                aiAnalysisMap = {};
+                aiAnalysisString = analysisRaw;
+              }
+            } catch (e) {
+              debugPrint("⚠️ Could not parse AI string: $e"); // 🐞 debugging
+              aiAnalysisMap = {};
+              aiAnalysisString = analysisRaw;
+            }
+          } else {
+            aiAnalysisMap = {};
+            aiAnalysisString = '';
+          }
         }
       } catch (e) {
-        debugPrint("Sentiment API failed: $e");
+        debugPrint("❌ Sentiment API failed: $e"); // 🐞 debugging
       }
     }
 
@@ -118,18 +165,48 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
       'journal': text,
       'polarity': polarity,
       'sentiment': sentiment,
+      'ai_analysis': aiAnalysisString,
     };
 
-    await _journalBox.add(entry);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Mood saved!")),
-    );
+    debugPrint("✅ Saving mood entry: $entry"); // 🐞 debugging
 
     setState(() {
       _selectedMood = null;
       _journalController.clear();
     });
+
+    await _journalBox.add(entry);
+
+    if (aiAnalysisMap.isNotEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("AI Suggestions"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (aiAnalysisMap['suggestion'] != null)
+                Text("💡 Suggestion: ${aiAnalysisMap['suggestion']}", style: const TextStyle(fontWeight: FontWeight.w500)),
+              if (aiAnalysisMap['estimated_time'] != null)
+                Text("⏱ Estimated Time: ${aiAnalysisMap['estimated_time']}", style: const TextStyle(fontWeight: FontWeight.w400)),
+              if (aiAnalysisMap['follow_up_question'] != null)
+                Text("🤔 Follow-up: ${aiAnalysisMap['follow_up_question']}", style: const TextStyle(fontWeight: FontWeight.w400)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Got it"),
+            ),
+          ],
+        ),
+      );
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Mood saved!")),
+    );
   }
 
   @override
@@ -171,10 +248,8 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
           children: [
             Text(today, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 20),
-
             Text("Select your mood:", style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
-
             Wrap(
               spacing: 16,
               runSpacing: 12,
@@ -204,7 +279,6 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
                 );
               }).toList(),
             ),
-
             const SizedBox(height: 24),
             TextField(
               controller: _journalController,
@@ -216,7 +290,6 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
                 fillColor: Colors.grey[50],
               ),
             ),
-
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () => Navigator.push(
@@ -232,7 +305,6 @@ class _MoodTrackerScreenState extends State<MoodTrackerScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-
             const SizedBox(height: 10),
             ElevatedButton.icon(
               onPressed: _saveMood,
